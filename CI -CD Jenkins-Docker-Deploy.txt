@@ -1,0 +1,99 @@
+pipeline {
+    agent any
+    
+    tools{
+        nodejs 'nodejs23'
+    }
+
+    environment {
+        SCANNER_HOME = tool 'sonarqube'
+    }
+
+    stages {
+
+        stage('Git Checkout') {
+            steps {
+                git branch: 'dev', url: 'https://github.com/naiksahil/3-Tier-Application-CI-CD-Project.git'
+            }
+        }
+        
+        stage('Fronten Complilation') {
+            steps {
+                dir('client') {
+                    sh 'find . -name "*.js" -exec node --check {} +'
+                }
+            }
+        }
+        
+        stage('Backend Complilation') {
+            steps {
+                dir('api') {
+                    sh 'find . -name "*.js" -exec node --check {} +'
+                }
+            }
+        }
+    
+        stage('Git leaks') {
+            steps {
+                sh 'gitleaks detect --source ./client'
+                sh 'gitleaks detect --source ./api'
+            }
+        }
+
+        stage('Sonarqube Analysis') {
+            steps {
+                withSonarQubeEnv('sonarqube') {
+                    sh '''
+                    $SCANNER_HOME/bin/sonar-scanner \
+                        -Dsonar.projectName=NodeJS-Project \
+                        -Dsonar.projectKey=NodeJS-Project \
+                        -Dsonar.sources=. \
+                        -Dsonar.exclusions=**/report.html
+                    '''
+                }
+            }
+        }     
+        
+        stage('Trivy FS Scan') {
+            steps {
+                sh 'trivy fs --format table -o report.html .'
+            }
+        }
+        
+        stage('Docker build Frontend & push') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker-id') {
+                        dir('client') {
+                        sh '''
+                        docker build -t sa2000/my-frontend:latest .
+                        trivy image --format table -o frontend_image_report sa2000/my-frontend:latest
+                        docker push sa2000/my-frontend:latest
+                        '''
+                            
+                        }
+
+                    }
+                }
+            }
+        }
+
+        stage('Docker build Backend & push') {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'docker-id') {
+                        dir('api') {
+                        sh '''
+                        docker build -t sa2000/my-backend:latest .
+                        trivy image --format table -o backend_image_report sa2000/my-backend:latest
+                        docker push sa2000/my-backend:latest
+                        '''
+                        }
+
+                    }
+                }
+            }
+        }
+
+    }
+}
