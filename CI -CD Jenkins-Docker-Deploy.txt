@@ -13,7 +13,7 @@ pipeline {
 
         stage('Git Checkout') {
             steps {
-                git branch: 'dev', url: 'https://github.com/naiksahil/3-Tier-Application-CI-CD-Project.git'
+                git branch: 'deploy-docker', url: 'https://github.com/naiksahil/3-Tier-Application-CI-CD-Project.git'
             }
         }
         
@@ -48,18 +48,22 @@ pipeline {
                         -Dsonar.projectName=NodeJS-Project \
                         -Dsonar.projectKey=NodeJS-Project \
                         -Dsonar.sources=. \
-                        -Dsonar.exclusions=**/report.html
+                        -Dsonar.exclusions=report.html
+                        
                     '''
                 }
             }
-        }     
+        }
+
+
+        
         
         stage('Trivy FS Scan') {
             steps {
-                sh 'trivy fs --format table -o report.html .'
+                sh 'trivy fs --format table -o report.json .'
             }
         }
-        
+
         stage('Docker build Frontend & push') {
             steps {
                 script {
@@ -94,6 +98,26 @@ pipeline {
                 }
             }
         }
+        
+        stage('Clean Docker') {
+            steps {
+                script {
+                    sh '''
+                    docker-compose down -v || true
+                    docker system prune -af || true
+                    '''
+                }
+            }
+        }
 
+        stage('Docker Deploy via Compose') {
+            steps {
+                script {
+                    sh 'docker compose up --build -d'
+                }
+            }
+        }
+        
+        
     }
 }
